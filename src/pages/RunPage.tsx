@@ -9,6 +9,14 @@ import {
 } from '../core/director'
 import { defaultMeters, type MeterSnapshot } from '../core/scoring'
 import { useActivePack } from '../data/packs'
+import {
+  applyModifiersToOutcome,
+  campaignBuildings,
+  collectModifierNotes,
+  filterEventsForActiveModifiers,
+  resolveBuildingTopics,
+  useCampaignState,
+} from '../core/campaign'
 
 const clamp = (value: number, min = 0, max = 1): number => {
   return Math.min(max, Math.max(min, value))
@@ -16,14 +24,39 @@ const clamp = (value: number, min = 0, max = 1): number => {
 
 const RunPage = (): JSX.Element => {
   const pack = useActivePack()
+  const { selectedBuildingId, activeModifiers } = useCampaignState()
+
+  const selectedBuilding = useMemo(() => {
+    return (
+      campaignBuildings.find((building) => building.id === selectedBuildingId) ??
+      campaignBuildings[0]
+    )
+  }, [selectedBuildingId])
+
+  const buildingTopics = useMemo(
+    () => resolveBuildingTopics(selectedBuilding, pack.topics),
+    [selectedBuilding, pack.topics],
+  )
+
+  const baseEvents = useMemo(() => {
+    const scoped = pack.events.filter((event) => buildingTopics.includes(event.topic))
+    return scoped.length > 0 ? scoped : pack.events
+  }, [pack.events, buildingTopics])
+
+  const directorEvents = useMemo(
+    () => filterEventsForActiveModifiers(baseEvents, activeModifiers),
+    [baseEvents, activeModifiers],
+  )
+
+  const modifierNotes = useMemo(() => collectModifierNotes(activeModifiers), [activeModifiers])
 
   const director = useMemo(
     () =>
       createDirector({
-        events: pack.events,
+        events: directorEvents,
         difficultyCurve: pack.difficultyCurve,
       }),
-    [pack],
+    [pack.difficultyCurve, directorEvents],
   )
 
   const [day, setDay] = useState(1)
@@ -49,7 +82,7 @@ const RunPage = (): JSX.Element => {
         timestamp: new Date(Date.now() - index * 45 * 60 * 1000).toISOString(),
       })),
     )
-  }, [pack])
+  }, [pack, selectedBuilding.id])
 
   useEffect(() => {
     const nextDecision = director.planNext({
@@ -62,6 +95,22 @@ const RunPage = (): JSX.Element => {
 
     setDecision(nextDecision)
   }, [director, day, masteryByTopic, meterStates, recentMistakes, pack.difficultyCurve])
+
+  const adjustedOutcome = useMemo(() => {
+    if (!decision?.event?.meterImpact) {
+      return null
+    }
+
+    return applyModifiersToOutcome(decision.event, decision.event.meterImpact, activeModifiers)
+  }, [decision, activeModifiers])
+
+  const combinedModifiers = useMemo(() => {
+    if (!decision) {
+      return modifierNotes
+    }
+
+    return [...decision.modifiers, ...modifierNotes]
+  }, [decision, modifierNotes])
 
   useEffect(() => {
     if (debugSnapshot?.enabled) {
@@ -84,13 +133,13 @@ const RunPage = (): JSX.Element => {
     })
 
     setMeterStates((current) => {
-      if (!decision?.event?.meterImpact) {
+      if (!adjustedOutcome) {
         return current
       }
 
       const next = { ...current }
 
-      for (const [meter, impact] of Object.entries(decision.event.meterImpact)) {
+      for (const [meter, impact] of Object.entries(adjustedOutcome)) {
         if (meter === 'summary' || typeof impact !== 'number') {
           continue
         }
@@ -114,7 +163,7 @@ const RunPage = (): JSX.Element => {
         return [...current.slice(-4), entry]
       })
     }
-  }, [decision])
+  }, [adjustedOutcome, decision])
 
   const handleToggleDebug = useCallback(() => {
     const snapshot = director.debug()
@@ -127,7 +176,8 @@ const RunPage = (): JSX.Element => {
         <div>
           <h2>Scenario Director</h2>
           <p className="small-print">
-            Day {day} · Active difficulty {decision?.difficulty ?? pack.difficultyCurve.start}
+            Day {day} · Active difficulty {decision?.difficulty ?? pack.difficultyCurve.start} ·
+            Building {selectedBuilding.name}
           </p>
         </div>
         <div className="button-row">
@@ -152,9 +202,13 @@ const RunPage = (): JSX.Element => {
             {decision.event.citation ? ` · Source: ${decision.event.citation}` : ''}
           </p>
 
-          {decision.modifiers.length > 0 ? (
+          {adjustedOutcome ? (
+            <p className="small-print">Outcome: {adjustedOutcome.summary}</p>
+          ) : null}
+
+          {combinedModifiers.length > 0 ? (
             <ul className="modifier-list">
-              {decision.modifiers.map((modifier) => (
+              {combinedModifiers.map((modifier) => (
                 <li key={modifier}>{modifier}</li>
               ))}
             </ul>

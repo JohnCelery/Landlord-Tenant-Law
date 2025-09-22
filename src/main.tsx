@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
 import { PacksProvider } from './data/packs'
+import { CampaignStateProvider } from './core/campaign'
 import './index.css'
 
 registerSW({ immediate: true })
@@ -11,9 +12,11 @@ registerSW({ immediate: true })
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PacksProvider>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <CampaignStateProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </CampaignStateProvider>
     </PacksProvider>
   </StrictMode>,
 )

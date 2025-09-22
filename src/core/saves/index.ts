@@ -8,6 +8,8 @@ export interface SaveGame {
   lastPlayed: string
   meters: MeterSnapshot
   streak: number
+  earnedBadges: string[]
+  activeModifiers: string[]
 }
 
 export const createInitialSave = (): SaveGame => ({
@@ -15,6 +17,8 @@ export const createInitialSave = (): SaveGame => ({
   lastPlayed: new Date(0).toISOString(),
   meters: { ...defaultMeters },
   streak: 0,
+  earnedBadges: [],
+  activeModifiers: [],
 })
 
 export const loadSave = (): SaveGame => {
@@ -45,6 +49,8 @@ export const persistSave = (save: SaveGame) => {
   const payload: SaveGame = {
     ...save,
     meters: { ...save.meters },
+    earnedBadges: [...save.earnedBadges],
+    activeModifiers: [...save.activeModifiers],
     lastPlayed: new Date().toISOString(),
   }
 
