@@ -21,14 +21,14 @@ import {
   subscribeToSystemTheme,
   type ThemeMode,
 } from './utils/a11y'
-import { loadSave } from './core/saves'
 import { usePacks } from './data/packs'
+import { useCampaignState } from './core/campaign'
 import './App.css'
 
 const App = () => {
   const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme())
-  const [meters] = useState(() => loadSave().meters)
   const { status, error, activePack } = usePacks()
+  const { meters } = useCampaignState()
 
   useEffect(() => {
     applyThemeToDocument(theme)

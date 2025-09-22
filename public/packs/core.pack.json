@@ -114,6 +114,31 @@
         "summary": "Skipping mandatory statements triggers refund penalties."
       },
       "relatedQuestionId": "question.deposit-interest"
+    },
+    {
+      "id": "event.subsidy-audit",
+      "topic": "FCHA",
+      "pressure": 2,
+      "description": "A voucher auditor demands proof of last quarter's HQS corrections within 48 hours.",
+      "meterImpact": {
+        "compliance": 4,
+        "residentTrust": 2,
+        "risk": -3,
+        "summary": "Responding with repair verification stabilizes subsidy partnerships."
+      }
+    },
+    {
+      "id": "event.rent-hearing",
+      "topic": "Rent",
+      "pressure": 4,
+      "description": "City rent board sets a hearing on your proposed 8% increase in a rent-control zone.",
+      "meterImpact": {
+        "compliance": -3,
+        "ownerROI": 4,
+        "residentTrust": -4,
+        "summary": "Aggressive increases boost ROI but trigger compliance scrutiny and resident pushback."
+      },
+      "citation": "https://www.nj.gov/dca/divisions/codes"
     }
   ],
   "noticeRules": [
@@ -211,10 +236,40 @@
   ],
   "badges": [
     {
+      "id": "badge.subsidyNavigator",
+      "name": "Subsidy Navigator",
+      "description": "Unlocked the subsidies wing by completing the voucher intake gauntlet.",
+      "icon": "badge.subsidyNavigator"
+    },
+    {
+      "id": "badge.njladSentinel",
+      "name": "NJLAD Sentinel",
+      "description": "Documented a discrimination case file with zero intake defects.",
+      "icon": "badge.njladSentinel"
+    },
+    {
       "id": "badge.noticeNinja",
       "name": "Notice Ninja",
-      "description": "Awarded for clearing the Notice Summit boss without violations.",
+      "description": "Cleared the Notice Summit without a single defective service attempt.",
       "icon": "badge.noticeNinja"
+    },
+    {
+      "id": "badge.depositDefender",
+      "name": "Deposit Defender",
+      "description": "Closed a season of deposit disputes with full statutory compliance.",
+      "icon": "badge.depositDefender"
+    },
+    {
+      "id": "badge.rentGuardian",
+      "name": "Rent Guardian",
+      "description": "Managed a rent increase docket while maintaining resident trust.",
+      "icon": "badge.rentGuardian"
+    },
+    {
+      "id": "badge.mixedStrategist",
+      "name": "Mixed Portfolio Strategist",
+      "description": "Balanced cross-topic emergencies during a county-wide surge.",
+      "icon": "badge.mixedStrategist"
     }
   ],
   "sessionEvents": [],

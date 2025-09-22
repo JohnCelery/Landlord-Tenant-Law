@@ -195,6 +195,224 @@ button.secondary {
   align-items: center;
 }
 
+.campaign-map {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.campaign-map__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.map-progress {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-soft);
+  text-align: right;
+}
+
+.map-progress span {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+@media (max-width: 960px) {
+  .map-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.map-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.map-canvas {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  background: linear-gradient(160deg, rgba(64, 120, 190, 0.18), rgba(15, 46, 86, 0.45));
+  border: 1px solid rgba(34, 79, 142, 0.4);
+  box-shadow: inset 0 0 24px rgba(10, 30, 60, 0.25);
+}
+
+.map-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 10% 18% 12% 20%;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.45), transparent 65%),
+    radial-gradient(circle at 75% 70%, rgba(255, 255, 255, 0.3), transparent 70%),
+    linear-gradient(170deg, rgba(166, 209, 255, 0.55), rgba(32, 77, 135, 0.6));
+  clip-path: polygon(
+    40% 0%,
+    55% 6%,
+    62% 18%,
+    70% 32%,
+    78% 45%,
+    72% 58%,
+    80% 70%,
+    66% 86%,
+    56% 100%,
+    42% 88%,
+    28% 78%,
+    18% 62%,
+    12% 40%,
+    22% 20%
+  );
+  opacity: 0.8;
+  filter: blur(0.5px);
+}
+
+.map-building {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.55rem 0.75rem;
+  min-width: 110px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(15, 46, 86, 0.35);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-text);
+  font-weight: 600;
+  box-shadow:
+    0 4px 12px rgba(12, 40, 80, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.map-building:disabled {
+  cursor: not-allowed;
+}
+
+.map-building--locked {
+  opacity: 0.55;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.map-building--selected {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border-color: transparent;
+  box-shadow:
+    0 6px 18px rgba(12, 40, 80, 0.28),
+    0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+.map-building__name {
+  font-size: 0.95rem;
+}
+
+.map-building__status {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(15, 46, 86, 0.75);
+}
+
+.map-building--selected .map-building__status {
+  color: var(--color-accent-contrast);
+}
+
+.map-detail {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.map-detail__meta {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.map-detail__meta div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.map-detail__meta dt {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.map-detail__meta dd {
+  margin: 0;
+}
+
+.map-modifiers {
+  display: grid;
+  gap: 1rem;
+}
+
+.map-modifier-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.map-modifier-card {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.map-modifier-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.map-modifier-chip:hover,
+.map-modifier-chip:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-soft);
+}
+
+.map-modifier-chip--active {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border-color: transparent;
+  box-shadow:
+    0 6px 14px rgba(12, 40, 80, 0.25),
+    0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
 .meter-overview {
   display: flex;
   flex-wrap: wrap;
