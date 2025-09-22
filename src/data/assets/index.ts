@@ -1,12 +1,4 @@
-export interface AssetSlot {
-  key: string
-  width: number
-  height: number
-  aspect: string
-  density: '1x' | '2x'
-  formatPreferred: string
-  notes?: string
-}
+import type { AssetSlot } from '../packs'
 
 export const assetCatalog: AssetSlot[] = [
   {

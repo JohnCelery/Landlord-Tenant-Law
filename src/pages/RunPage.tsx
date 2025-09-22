@@ -1,9 +1,10 @@
 import { createDirector, planEvents } from '../core/director'
-import { corePack } from '../data/packs'
+import { useActivePack } from '../data/packs'
 
 const RunPage = () => {
-  const director = createDirector({ startDifficulty: corePack.difficultyCurve.start })
-  const nextEvent = planEvents(corePack.events, director)
+  const pack = useActivePack()
+  const director = createDirector({ startDifficulty: pack.difficultyCurve.start })
+  const nextEvent = planEvents(pack.events, director)
 
   return (
     <section>
@@ -15,7 +16,7 @@ const RunPage = () => {
             <p className="badge">Pressure {nextEvent.pressure}</p>
           </header>
           <p>{nextEvent.description}</p>
-          <p className="small-print">Source: {nextEvent.citation}</p>
+          {nextEvent.citation ? <p className="small-print">Source: {nextEvent.citation}</p> : null}
         </article>
       ) : (
         <p>No events available. Add more content packs to keep the campaign fresh.</p>

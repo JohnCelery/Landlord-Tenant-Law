@@ -1,0 +1,222 @@
+{
+  "id": "core",
+  "title": "Core NJ Pack",
+  "version": "1.1.0",
+  "minAppVersion": "0.1.0",
+  "topics": ["NJLAD", "FCHA", "Notices", "Deposits", "Rent"],
+  "municipalities": ["Jersey City", "Newark", "Elizabeth"],
+  "difficultyCurve": {
+    "start": "easy",
+    "mid": "normal",
+    "late": "hard"
+  },
+  "artSlotsRequired": ["ui.map.bg.nj.portrait", "badge.noticeNinja", "building.noticeCenter"],
+  "questions": [
+    {
+      "id": "question.notice-proof",
+      "prompt": "A resident challenges the proof of service for a pay-or-quit notice. What should you double-check first?",
+      "topic": "Notices",
+      "difficulty": "easy",
+      "explanation": "Documenting certified mail plus a follow-up copy is the safest baseline for New Jersey notices.",
+      "choices": [
+        {
+          "id": "choice.notice-proof.certified",
+          "label": "Confirm certified mail and a regular-mail follow up were sent.",
+          "meterImpact": {
+            "compliance": 4,
+            "residentTrust": 2,
+            "summary": "Valid service proof eases the dispute and shows diligence."
+          },
+          "correct": true
+        },
+        {
+          "id": "choice.notice-proof.text",
+          "label": "Print the text messages where the resident acknowledged receipt.",
+          "meterImpact": {
+            "risk": 3,
+            "summary": "Texts help context but rarely satisfy statutory service requirements."
+          }
+        },
+        {
+          "id": "choice.notice-proof.wait",
+          "label": "Wait for the court date to address it with the judge.",
+          "meterImpact": {
+            "risk": 5,
+            "ownerROI": -3,
+            "summary": "Delaying weakens your position and extends vacancy risk."
+          }
+        }
+      ]
+    },
+    {
+      "id": "question.deposit-interest",
+      "prompt": "Your compliance dashboard flags missing annual security-deposit interest statements. What is the best corrective step?",
+      "topic": "Deposits",
+      "difficulty": "normal",
+      "explanation": "Annual statements with interest payouts keep you aligned with NJSA 46:8-19.",
+      "choices": [
+        {
+          "id": "choice.deposit.batch",
+          "label": "Send statements with owed interest plus a note on the correction plan.",
+          "meterImpact": {
+            "compliance": 5,
+            "residentTrust": 3,
+            "summary": "Proactive payouts resolve statutory exposure and rebuild trust."
+          },
+          "correct": true
+        },
+        {
+          "id": "choice.deposit.defer",
+          "label": "Hold until the next renewal cycle since everyone will sign anyway.",
+          "meterImpact": {
+            "risk": 4,
+            "summary": "Deferring keeps you out of compliance and heightens risk of treble damages."
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "event.welcome-inspection",
+      "topic": "NJLAD",
+      "pressure": 1,
+      "description": "A HUD inspector flags missing reasonable accommodations logs.",
+      "meterImpact": {
+        "compliance": 5,
+        "residentTrust": 3,
+        "risk": -2,
+        "summary": "Proactively fix documentation gaps to build trust."
+      },
+      "citation": "https://www.nj.gov/lps/dcr/"
+    },
+    {
+      "id": "event.notice-escalation",
+      "topic": "Notices",
+      "pressure": 3,
+      "description": "Resident disputes the timing on a rent-due notice.",
+      "meterImpact": {
+        "compliance": -4,
+        "ownerROI": -2,
+        "risk": 6,
+        "summary": "Late notices without service proof invite disputes."
+      },
+      "citation": "https://www.nj.gov/dca/"
+    },
+    {
+      "id": "event.deposit-reconciliation",
+      "topic": "Deposits",
+      "pressure": 2,
+      "description": "Annual interest statements were skipped for four residents.",
+      "meterImpact": {
+        "compliance": -6,
+        "residentTrust": -3,
+        "summary": "Skipping mandatory statements triggers refund penalties."
+      },
+      "relatedQuestionId": "question.deposit-interest"
+    }
+  ],
+  "noticeRules": [
+    {
+      "id": "notice.nonpayment",
+      "ground": "Non-payment of rent",
+      "ceaseRequired": false,
+      "quitTiming": "3_days",
+      "serviceOptions": ["personal", "certified_then_regular"],
+      "notes": "Certified mail followed by regular is preferred when personal service fails."
+    },
+    {
+      "id": "notice.habitual-late",
+      "ground": "Habitual late payment",
+      "ceaseRequired": true,
+      "quitTiming": "1_month",
+      "serviceOptions": ["personal", "posting_with_photos"]
+    },
+    {
+      "id": "notice.owner-occupancy",
+      "ground": "Owner occupancy",
+      "ceaseRequired": false,
+      "quitTiming": "2_months",
+      "serviceOptions": ["personal", "substitute_service"],
+      "notes": "Outside the statute defaults; adjust to local ordinance."
+    }
+  ],
+  "bossCases": [
+    {
+      "id": "boss.notice-summit",
+      "title": "Notice Summit Showdown",
+      "overview": "Stack multiple high-pressure notice events to defend an eviction filing in Hudson County.",
+      "difficulty": "hard",
+      "objectives": [
+        {
+          "id": "objective.timeline",
+          "description": "Establish a complete service timeline for three residents.",
+          "meterImpact": {
+            "compliance": 8,
+            "summary": "Chronologies convince the judge the file is airtight."
+          }
+        },
+        {
+          "id": "objective.communication",
+          "description": "Resolve two informal resident disputes before trial call.",
+          "meterImpact": {
+            "residentTrust": 7,
+            "summary": "Rapid follow-up quells tensions and shows good faith."
+          }
+        }
+      ],
+      "failState": "Judge dismisses the case for improper notice sequencing.",
+      "rewardBadges": ["badge.noticeNinja"]
+    }
+  ],
+  "npcScripts": [
+    {
+      "id": "npc.dispatch",
+      "title": "Compliance Dispatch",
+      "role": "Operations Chief",
+      "lines": [
+        {
+          "speaker": "Chief Martinez",
+          "line": "You kept the inspectors off our backs last quarter. Let's not lose that momentum."
+        },
+        {
+          "speaker": "Chief Martinez",
+          "line": "Pull the service logs and prep the audit binder. I'll brief ownership at 1600."
+        }
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": "policy-tracker",
+      "name": "Policy Tracker",
+      "description": "Auto-checks statutory updates for each municipality in your pack.",
+      "category": "Compliance",
+      "effects": ["+Compliance", "+Resident Trust"]
+    },
+    {
+      "id": "rapid-reply",
+      "name": "Rapid Reply",
+      "description": "Unlock quick-response templates for resident disputes.",
+      "category": "Operations",
+      "effects": ["-Risk", "+Resident Trust"]
+    },
+    {
+      "id": "rent-modeler",
+      "name": "Rent Modeler",
+      "description": "Forecasts rent scenarios with code-aligned increase caps.",
+      "category": "Finance",
+      "effects": ["+Owner ROI"]
+    }
+  ],
+  "badges": [
+    {
+      "id": "badge.noticeNinja",
+      "name": "Notice Ninja",
+      "description": "Awarded for clearing the Notice Summit boss without violations.",
+      "icon": "badge.noticeNinja"
+    }
+  ],
+  "sessionEvents": [],
+  "leaderboard": []
+}
