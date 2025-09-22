@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: '/Landlord-Tenant-Law/',
   plugins: [
     react(),
     VitePWA({
@@ -10,7 +11,7 @@ export default defineConfig({
       includeAssets: ['vite.svg'],
       manifest: false,
       workbox: {
-        navigateFallback: '/index.html',
+        navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,svg,webmanifest}'],
       },
     }),
