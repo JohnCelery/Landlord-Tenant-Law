@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Layout from './components/Layout'
 import {
   AdminPage,
@@ -22,11 +22,13 @@ import {
   type ThemeMode,
 } from './utils/a11y'
 import { loadSave } from './core/saves'
+import { usePacks } from './data/packs'
 import './App.css'
 
 const App = () => {
   const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme())
   const [meters] = useState(() => loadSave().meters)
+  const { status, error, activePack } = usePacks()
 
   useEffect(() => {
     applyThemeToDocument(theme)
@@ -41,8 +43,26 @@ const App = () => {
     return unsubscribe
   }, [])
 
-  return (
-    <Layout theme={theme} onThemeChange={setTheme} meters={meters}>
+  const content = useMemo(() => {
+    if (status === 'loading') {
+      return (
+        <section>
+          <h2>Loading content packs…</h2>
+          <p>Please wait while we prepare your training data.</p>
+        </section>
+      )
+    }
+
+    if (!activePack) {
+      return (
+        <section>
+          <h2>Unable to load content</h2>
+          <p>{error ?? 'The requested pack could not be loaded.'}</p>
+        </section>
+      )
+    }
+
+    return (
       <Routes>
         <Route path="/" element={<Navigate to="/map" replace />} />
         <Route path="/map" element={<MapPage />} />
@@ -57,6 +77,12 @@ const App = () => {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+    )
+  }, [status, activePack, error])
+
+  return (
+    <Layout theme={theme} onThemeChange={setTheme} meters={meters}>
+      {content}
     </Layout>
   )
 }

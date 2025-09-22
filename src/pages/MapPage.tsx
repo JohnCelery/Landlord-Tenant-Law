@@ -1,13 +1,15 @@
-import { corePack } from '../data/packs'
+import { useActivePack } from '../data/packs'
 import { assetCatalog } from '../data/assets'
 
 const MapPage = () => {
+  const pack = useActivePack()
+
   return (
     <section>
       <h2>Campaign Map</h2>
       <p>Select a building to focus on a specific regulatory topic.</p>
       <ul className="card-grid">
-        {corePack.topics.map((topic) => (
+        {pack.topics.map((topic) => (
           <li key={topic} className="card">
             <h3>{topic}</h3>
             <p>Practice events tied to {topic} obligations and best practices.</p>

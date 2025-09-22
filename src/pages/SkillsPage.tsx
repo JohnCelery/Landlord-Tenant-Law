@@ -1,13 +1,11 @@
-import { corePack } from '../data/packs'
+import { useActivePack } from '../data/packs'
 import { defaultMeters } from '../core/scoring'
 
-const skillCards = [
-  { id: 'policy-tracker', title: 'Policy Tracker', effect: '+Compliance, +Trust' },
-  { id: 'rapid-reply', title: 'Rapid Reply', effect: '-Risk, +Trust' },
-  { id: 'rent-modeler', title: 'Rent Modeler', effect: '+ROI' },
-]
-
 const SkillsPage = () => {
+  const pack = useActivePack()
+  const skills = pack.skills ?? []
+  const badges = pack.badges ?? []
+
   return (
     <section>
       <h2>Skills & Policies</h2>
@@ -21,15 +19,32 @@ const SkillsPage = () => {
         ))}
       </div>
       <ul className="card-grid">
-        {skillCards.map((skill) => (
-          <li key={skill.id} className="card">
-            <h3>{skill.title}</h3>
-            <p>{skill.effect}</p>
-          </li>
-        ))}
+        {skills.length > 0 ? (
+          skills.map((skill) => (
+            <li key={skill.id} className="card">
+              <h3>{skill.name}</h3>
+              <p>{skill.description}</p>
+              <p className="small-print">{skill.effects.join(' · ')}</p>
+            </li>
+          ))
+        ) : (
+          <li className="card">No skills configured for this content pack yet.</li>
+        )}
       </ul>
+      {badges.length > 0 ? (
+        <div className="card">
+          <h3>Badge rewards</h3>
+          <ul>
+            {badges.map((badge) => (
+              <li key={badge.id}>
+                <strong>{badge.name}:</strong> {badge.description}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <p className="small-print">
-        Packs loaded: <strong>{corePack.title}</strong> ({corePack.events.length} events)
+        Packs loaded: <strong>{pack.title}</strong> ({pack.events.length} events)
       </p>
     </section>
   )

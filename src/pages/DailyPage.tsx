@@ -1,8 +1,9 @@
 import { shuffle } from '../utils/rand'
-import { corePack } from '../data/packs'
+import { useActivePack } from '../data/packs'
 
 const DailyPage = () => {
-  const featured = shuffle(corePack.events).slice(0, 3)
+  const pack = useActivePack()
+  const featured = shuffle(pack.events).slice(0, 3)
 
   return (
     <section>
