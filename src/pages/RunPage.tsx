@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import DirectorDebugOverlay from '../components/DirectorDebugOverlay'
 import {
   createDirector,
   type DirectorDecision,
   type DirectorDebugSnapshot,
+  type DirectorEvent,
   type DirectorMistake,
 } from '../core/director'
 import { defaultMeters, type MeterSnapshot } from '../core/scoring'
@@ -17,6 +18,11 @@ import {
   resolveBuildingTopics,
   useCampaignState,
 } from '../core/campaign'
+import EventCaseFile, {
+  type CaseResolution,
+  type SessionEventInput,
+} from './components/EventCaseFile'
+import type { SessionEvent } from '../data/packs/schema'
 
 const clamp = (value: number, min = 0, max = 1): number => {
   return Math.min(max, Math.max(min, value))
@@ -65,6 +71,17 @@ const RunPage = (): JSX.Element => {
   const [recentMistakes, setRecentMistakes] = useState<DirectorMistake[]>([])
   const [decision, setDecision] = useState<DirectorDecision | null>(null)
   const [debugSnapshot, setDebugSnapshot] = useState<DirectorDebugSnapshot | null>(null)
+  const [sessionLog, setSessionLog] = useState<SessionEvent[]>([])
+  const [pendingCleanupEvents, setPendingCleanupEvents] = useState<DirectorEvent[]>([])
+  const [scheduledCleanupEvents, setScheduledCleanupEvents] = useState<DirectorEvent[]>([])
+  const [streak, setStreak] = useState(0)
+  const [xpTotal, setXpTotal] = useState(0)
+  const [xpMultiplier, setXpMultiplier] = useState(1)
+  const [lastCombo, setLastCombo] = useState<string | null>(null)
+  const [, setResolutionHistory] = useState<
+    Array<{ id: string; topic: string; resolvedAt: number; correct: boolean }>
+  >([])
+  const sessionCounterRef = useRef(0)
 
   useEffect(() => {
     setDay(1)
@@ -82,6 +99,14 @@ const RunPage = (): JSX.Element => {
         timestamp: new Date(Date.now() - index * 45 * 60 * 1000).toISOString(),
       })),
     )
+    setSessionLog(pack.sessionEvents ?? [])
+    setPendingCleanupEvents([])
+    setScheduledCleanupEvents([])
+    setStreak(0)
+    setXpTotal(0)
+    setXpMultiplier(1)
+    setLastCombo(null)
+    setResolutionHistory([])
   }, [pack, selectedBuilding.id])
 
   useEffect(() => {
@@ -96,21 +121,41 @@ const RunPage = (): JSX.Element => {
     setDecision(nextDecision)
   }, [director, day, masteryByTopic, meterStates, recentMistakes, pack.difficultyCurve])
 
-  const adjustedOutcome = useMemo(() => {
-    if (!decision?.event?.meterImpact) {
+  const activeEvent = useMemo(() => {
+    if (pendingCleanupEvents.length > 0) {
+      return pendingCleanupEvents[0]
+    }
+
+    return decision?.event ?? null
+  }, [decision, pendingCleanupEvents])
+
+  const relatedQuestion = useMemo(() => {
+    if (!activeEvent?.relatedQuestionId) {
       return null
     }
 
-    return applyModifiersToOutcome(decision.event, decision.event.meterImpact, activeModifiers)
-  }, [decision, activeModifiers])
+    return pack.questions.find((question) => question.id === activeEvent.relatedQuestionId) ?? null
+  }, [activeEvent, pack.questions])
+
+  const adjustedOutcome = useMemo(() => {
+    if (!activeEvent?.meterImpact) {
+      return null
+    }
+
+    if (pendingCleanupEvents.length > 0) {
+      return activeEvent.meterImpact
+    }
+
+    return applyModifiersToOutcome(activeEvent, activeEvent.meterImpact, activeModifiers)
+  }, [activeEvent, activeModifiers, pendingCleanupEvents.length])
 
   const combinedModifiers = useMemo(() => {
-    if (!decision) {
+    if (!decision || pendingCleanupEvents.length > 0) {
       return modifierNotes
     }
 
     return [...decision.modifiers, ...modifierNotes]
-  }, [decision, modifierNotes])
+  }, [decision, modifierNotes, pendingCleanupEvents.length])
 
   useEffect(() => {
     if (debugSnapshot?.enabled) {
@@ -122,13 +167,13 @@ const RunPage = (): JSX.Element => {
     setDay((current) => current + 1)
 
     setMasteryByTopic((current) => {
-      if (!decision?.event) {
+      if (!activeEvent) {
         return current
       }
 
       const next = { ...current }
-      const existing = next[decision.event.topic] ?? 0.5
-      next[decision.event.topic] = Number(clamp(existing + 0.05).toFixed(2))
+      const existing = next[activeEvent.topic] ?? 0.5
+      next[activeEvent.topic] = Number(clamp(existing + 0.05).toFixed(2))
       return next
     })
 
@@ -152,23 +197,154 @@ const RunPage = (): JSX.Element => {
       return next
     })
 
-    if (decision?.event) {
+    if (activeEvent) {
       setRecentMistakes((current) => {
         const entry: DirectorMistake = {
-          topic: decision.event!.topic,
-          eventId: decision.event!.id,
+          topic: activeEvent.topic,
+          eventId: activeEvent.id,
           timestamp: new Date().toISOString(),
         }
 
         return [...current.slice(-4), entry]
       })
     }
-  }, [adjustedOutcome, decision])
+
+    if (scheduledCleanupEvents.length > 0) {
+      setPendingCleanupEvents((current) => [...current, ...scheduledCleanupEvents])
+      setScheduledCleanupEvents([])
+    }
+  }, [activeEvent, adjustedOutcome, scheduledCleanupEvents])
 
   const handleToggleDebug = useCallback(() => {
     const snapshot = director.debug()
     setDebugSnapshot(snapshot.enabled ? snapshot : null)
   }, [director])
+
+  const emitSessionEvent = useCallback((input: SessionEventInput) => {
+    sessionCounterRef.current += 1
+    const entry: SessionEvent = {
+      id: `${input.kind}-${Date.now()}-${sessionCounterRef.current}`,
+      kind: input.kind,
+      timestamp: new Date().toISOString(),
+      summary: input.summary,
+      data: input.data,
+    }
+
+    setSessionLog((current) => [...current.slice(-49), entry])
+  }, [])
+
+  const detectLinkedCombo = useCallback(
+    (history: Array<{ topic: string; resolvedAt: number; correct: boolean }>): boolean => {
+      const windowed = history
+        .filter((entry) => entry.correct)
+        .sort((a, b) => a.resolvedAt - b.resolvedAt)
+
+      const sequence = ['cease', 'quit', 'service']
+      let index = 0
+      let firstTimestamp: number | null = null
+
+      for (const entry of windowed) {
+        const normalized = entry.topic.toLowerCase()
+
+        if (normalized.includes(sequence[index])) {
+          if (index === 0) {
+            firstTimestamp = entry.resolvedAt
+          }
+
+          index += 1
+
+          if (index === sequence.length) {
+            if (firstTimestamp && entry.resolvedAt - firstTimestamp <= 1000 * 60 * 60 * 48) {
+              return true
+            }
+
+            index = 1
+            firstTimestamp = entry.resolvedAt
+          }
+        }
+      }
+
+      return false
+    },
+    [],
+  )
+
+  const handleCaseResolved = useCallback(
+    (resolution: CaseResolution) => {
+      if (!activeEvent) {
+        return
+      }
+
+      if (pendingCleanupEvents.length > 0 && pendingCleanupEvents[0].id === activeEvent.id) {
+        setPendingCleanupEvents((current) => current.slice(1))
+      }
+
+      const now = Date.now()
+      const windowStart = now - 1000 * 60 * 60 * 48
+      let nextStreak = 0
+
+      setStreak((current) => {
+        nextStreak = resolution.correct ? current + 1 : 0
+        return nextStreak
+      })
+
+      let linkedComboTriggered = false
+
+      setResolutionHistory((current) => {
+        const next = [
+          ...current.filter((entry) => entry.resolvedAt >= windowStart),
+          {
+            id: activeEvent.id,
+            topic: activeEvent.topic,
+            resolvedAt: now,
+            correct: resolution.correct,
+          },
+        ]
+        linkedComboTriggered = detectLinkedCombo(next)
+        return next
+      })
+
+      const baseXp = resolution.correct ? 120 : 40
+      let multiplier = 1
+
+      if (resolution.correct) {
+        if (nextStreak >= 5) {
+          multiplier += 0.5
+        } else if (nextStreak >= 3) {
+          multiplier += 0.25
+        }
+      }
+
+      if (linkedComboTriggered) {
+        multiplier *= 2
+        setLastCombo('Cease → Quit → Service combo!')
+      } else if (!resolution.correct) {
+        setLastCombo(null)
+      }
+
+      setXpMultiplier(multiplier)
+      setXpTotal((current) => current + Math.round(baseXp * multiplier))
+
+      if (!resolution.correct) {
+        const cleanupEvent: DirectorEvent = {
+          id: `cleanup-${activeEvent.id}-${now}`,
+          topic: activeEvent.topic,
+          pressure: Math.max(1, activeEvent.pressure),
+          description: `Cleanup required after the response to ${activeEvent.id}.`,
+          meterImpact: {
+            summary: `Follow-up tasks triggered by mistakes on ${activeEvent.id}.`,
+            risk: 2,
+            compliance: -2,
+          },
+          citation: activeEvent.citation,
+          relatedQuestionId: activeEvent.relatedQuestionId,
+        }
+
+        setScheduledCleanupEvents((current) => [...current, cleanupEvent])
+      }
+    },
+    [activeEvent, detectLinkedCombo, pendingCleanupEvents],
+  )
 
   return (
     <section className="scenario-run">
@@ -190,41 +366,24 @@ const RunPage = (): JSX.Element => {
         </div>
       </header>
 
-      {decision?.event ? (
-        <article className="card">
-          <header>
-            <h3>{decision.event.topic}</h3>
-            <p className="badge">Pressure {decision.event.pressure}</p>
-          </header>
-          <p>{decision.event.description}</p>
-          <p className="small-print">
-            Mode {decision.mode} · Target {decision.intendedMode}
-            {decision.event.citation ? ` · Source: ${decision.event.citation}` : ''}
-          </p>
-
-          {adjustedOutcome ? (
-            <p className="small-print">Outcome: {adjustedOutcome.summary}</p>
-          ) : null}
-
-          {combinedModifiers.length > 0 ? (
-            <ul className="modifier-list">
-              {combinedModifiers.map((modifier) => (
-                <li key={modifier}>{modifier}</li>
-              ))}
-            </ul>
-          ) : null}
-
-          {decision.timers.length > 0 ? (
-            <ul className="timer-list">
-              {decision.timers.map((timer) => (
-                <li key={timer.id}>
-                  <span>{timer.label}</span>
-                  <span className="small-print">{Math.round(timer.durationMs / 1000)}s</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </article>
+      {activeEvent ? (
+        <EventCaseFile
+          key={activeEvent.id}
+          event={activeEvent}
+          relatedQuestion={relatedQuestion ?? undefined}
+          baseTimeMs={decision?.timers[0]?.durationMs ?? 90000}
+          coinsAvailable={5}
+          onResolve={handleCaseResolved}
+          onSessionEvent={emitSessionEvent}
+          isCleanup={
+            pendingCleanupEvents.length > 0 && pendingCleanupEvents[0].id === activeEvent.id
+          }
+          modifiers={combinedModifiers}
+          outcomeSummary={adjustedOutcome?.summary}
+          modeLabel={
+            decision ? `Mode ${decision.mode} · Target ${decision.intendedMode}` : undefined
+          }
+        />
       ) : (
         <p>No events available. Add more content packs to keep the campaign fresh.</p>
       )}
@@ -268,7 +427,48 @@ const RunPage = (): JSX.Element => {
               )}
             </ul>
           </div>
+          <div>
+            <h4>Run momentum</h4>
+            <ul>
+              <li>
+                XP total
+                <span className="small-print"> {xpTotal}</span>
+              </li>
+              <li>
+                Current streak
+                <span className="small-print"> {streak}</span>
+              </li>
+              <li>
+                Multiplier
+                <span className="small-print"> ×{xpMultiplier.toFixed(2)}</span>
+              </li>
+              <li>
+                Combo
+                <span className="small-print"> {lastCombo ?? 'None'}</span>
+              </li>
+            </ul>
+          </div>
         </div>
+      </section>
+
+      <section className="card session-log">
+        <h3>Session events</h3>
+        <ul>
+          {sessionLog.length > 0 ? (
+            [...sessionLog].reverse().map((entry) => (
+              <li key={entry.id}>
+                <strong>{entry.kind}</strong>
+                <span className="small-print">
+                  {' '}
+                  · {new Date(entry.timestamp).toLocaleTimeString()}
+                </span>
+                <p>{entry.summary}</p>
+              </li>
+            ))
+          ) : (
+            <li>No session events yet.</li>
+          )}
+        </ul>
       </section>
 
       {debugSnapshot?.enabled ? <DirectorDebugOverlay snapshot={debugSnapshot} /> : null}

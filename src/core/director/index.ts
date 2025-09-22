@@ -246,18 +246,18 @@ const classifyEvent = (event: DirectorEvent): DirectorMode => {
 
 const pickMode = (counts: Record<DirectorMode, number>, totalDecisions: number): DirectorMode => {
   let bestMode: DirectorMode = 'application'
-  let bestDeficit = -Infinity(Object.keys(TARGET_DISTRIBUTION) as DirectorMode[]).forEach(
-    (mode) => {
-      const targetCount = TARGET_DISTRIBUTION[mode] * (totalDecisions + 1)
-      const current = counts[mode]
-      const deficit = targetCount - current
+  let bestDeficit = -Infinity
 
-      if (deficit > bestDeficit) {
-        bestMode = mode
-        bestDeficit = deficit
-      }
-    },
-  )
+  for (const mode of Object.keys(TARGET_DISTRIBUTION) as DirectorMode[]) {
+    const targetCount = TARGET_DISTRIBUTION[mode] * (totalDecisions + 1)
+    const current = counts[mode]
+    const deficit = targetCount - current
+
+    if (deficit > bestDeficit) {
+      bestMode = mode
+      bestDeficit = deficit
+    }
+  }
 
   return bestMode
 }

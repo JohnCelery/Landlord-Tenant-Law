@@ -1,6 +1,7 @@
 import {
   createContext,
   type PropsWithChildren,
+  type JSX,
   useCallback,
   useContext,
   useEffect,
