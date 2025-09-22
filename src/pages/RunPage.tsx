@@ -8,7 +8,7 @@ import {
   type DirectorEvent,
   type DirectorMistake,
 } from '../core/director'
-import { defaultMeters, type MeterSnapshot } from '../core/scoring'
+import { defaultMeters, type MeterSnapshot, type OutcomeDelta } from '../core/scoring'
 import { useActivePack } from '../data/packs'
 import {
   applyModifiersToOutcome,
@@ -78,6 +78,8 @@ const RunPage = (): JSX.Element => {
   const [xpTotal, setXpTotal] = useState(0)
   const [xpMultiplier, setXpMultiplier] = useState(1)
   const [lastCombo, setLastCombo] = useState<string | null>(null)
+  const [unlockedSkillIds, setUnlockedSkillIds] = useState<string[]>([])
+  const [pendingOutcome, setPendingOutcome] = useState<OutcomeDelta | null>(null)
   const [, setResolutionHistory] = useState<
     Array<{ id: string; topic: string; resolvedAt: number; correct: boolean }>
   >([])
@@ -107,6 +109,9 @@ const RunPage = (): JSX.Element => {
     setXpMultiplier(1)
     setLastCombo(null)
     setResolutionHistory([])
+    const baselineSkills = pack.skills.length > 0 ? [pack.skills[0].id] : []
+    setUnlockedSkillIds(baselineSkills)
+    setPendingOutcome(null)
   }, [pack, selectedBuilding.id])
 
   useEffect(() => {
@@ -166,25 +171,16 @@ const RunPage = (): JSX.Element => {
   const handleAdvanceDay = useCallback(() => {
     setDay((current) => current + 1)
 
-    setMasteryByTopic((current) => {
-      if (!activeEvent) {
-        return current
-      }
-
-      const next = { ...current }
-      const existing = next[activeEvent.topic] ?? 0.5
-      next[activeEvent.topic] = Number(clamp(existing + 0.05).toFixed(2))
-      return next
-    })
-
     setMeterStates((current) => {
-      if (!adjustedOutcome) {
+      const outcomeToApply = pendingOutcome ?? adjustedOutcome
+
+      if (!outcomeToApply) {
         return current
       }
 
       const next = { ...current }
 
-      for (const [meter, impact] of Object.entries(adjustedOutcome)) {
+      for (const [meter, impact] of Object.entries(outcomeToApply)) {
         if (meter === 'summary' || typeof impact !== 'number') {
           continue
         }
@@ -197,23 +193,13 @@ const RunPage = (): JSX.Element => {
       return next
     })
 
-    if (activeEvent) {
-      setRecentMistakes((current) => {
-        const entry: DirectorMistake = {
-          topic: activeEvent.topic,
-          eventId: activeEvent.id,
-          timestamp: new Date().toISOString(),
-        }
-
-        return [...current.slice(-4), entry]
-      })
-    }
+    setPendingOutcome(null)
 
     if (scheduledCleanupEvents.length > 0) {
       setPendingCleanupEvents((current) => [...current, ...scheduledCleanupEvents])
       setScheduledCleanupEvents([])
     }
-  }, [activeEvent, adjustedOutcome, scheduledCleanupEvents])
+  }, [adjustedOutcome, pendingOutcome, scheduledCleanupEvents])
 
   const handleToggleDebug = useCallback(() => {
     const snapshot = director.debug()
@@ -232,6 +218,46 @@ const RunPage = (): JSX.Element => {
 
     setSessionLog((current) => [...current.slice(-49), entry])
   }, [])
+
+  useEffect(() => {
+    if (pack.skills.length === 0) {
+      return
+    }
+
+    const newlyUnlocked: string[] = []
+
+    setUnlockedSkillIds((current) => {
+      const next = new Set(current)
+
+      pack.skills.forEach((skill, index) => {
+        const threshold = index === 0 ? 0 : 400 * index
+
+        if (xpTotal >= threshold && !next.has(skill.id)) {
+          next.add(skill.id)
+          newlyUnlocked.push(skill.id)
+        }
+      })
+
+      if (newlyUnlocked.length === 0) {
+        return current
+      }
+
+      return Array.from(next)
+    })
+
+    if (newlyUnlocked.length > 0) {
+      newlyUnlocked.forEach((skillId) => {
+        const skill = pack.skills.find((entry) => entry.id === skillId)
+        emitSessionEvent({
+          kind: 'skill_unlocked',
+          summary: `Unlocked ${skill?.name ?? skillId}`,
+          data: {
+            skillId,
+          },
+        })
+      })
+    }
+  }, [emitSessionEvent, pack.skills, xpTotal])
 
   const detectLinkedCombo = useCallback(
     (history: Array<{ topic: string; resolvedAt: number; correct: boolean }>): boolean => {
@@ -278,6 +304,29 @@ const RunPage = (): JSX.Element => {
       if (pendingCleanupEvents.length > 0 && pendingCleanupEvents[0].id === activeEvent.id) {
         setPendingCleanupEvents((current) => current.slice(1))
       }
+
+      const appliedOutcome = resolution.meterImpact ?? adjustedOutcome ?? null
+      setPendingOutcome(appliedOutcome)
+
+      const previousMastery = masteryByTopic[activeEvent.topic] ?? 0.5
+      const masteryDelta = resolution.correct ? 0.08 : -0.06
+      const nextMastery = Number(clamp(previousMastery + masteryDelta).toFixed(2))
+
+      setMasteryByTopic((current) => ({
+        ...current,
+        [activeEvent.topic]: nextMastery,
+      }))
+
+      emitSessionEvent({
+        kind: 'topic_mastery',
+        summary: `Mastery for ${activeEvent.topic} ${(nextMastery * 100).toFixed(0)}%`,
+        data: {
+          topic: activeEvent.topic,
+          previous: previousMastery,
+          next: nextMastery,
+          correct: resolution.correct,
+        },
+      })
 
       const now = Date.now()
       const windowStart = now - 1000 * 60 * 60 * 48
@@ -326,6 +375,16 @@ const RunPage = (): JSX.Element => {
       setXpTotal((current) => current + Math.round(baseXp * multiplier))
 
       if (!resolution.correct) {
+        setRecentMistakes((current) => {
+          const entry: DirectorMistake = {
+            topic: activeEvent.topic,
+            eventId: activeEvent.id,
+            timestamp: new Date().toISOString(),
+          }
+
+          return [...current.slice(-4), entry]
+        })
+
         const cleanupEvent: DirectorEvent = {
           id: `cleanup-${activeEvent.id}-${now}`,
           topic: activeEvent.topic,
@@ -343,7 +402,14 @@ const RunPage = (): JSX.Element => {
         setScheduledCleanupEvents((current) => [...current, cleanupEvent])
       }
     },
-    [activeEvent, detectLinkedCombo, pendingCleanupEvents],
+    [
+      activeEvent,
+      adjustedOutcome,
+      detectLinkedCombo,
+      emitSessionEvent,
+      masteryByTopic,
+      pendingCleanupEvents,
+    ],
   )
 
   return (
@@ -383,6 +449,7 @@ const RunPage = (): JSX.Element => {
           modeLabel={
             decision ? `Mode ${decision.mode} · Target ${decision.intendedMode}` : undefined
           }
+          unlockedSkillIds={unlockedSkillIds}
         />
       ) : (
         <p>No events available. Add more content packs to keep the campaign fresh.</p>
