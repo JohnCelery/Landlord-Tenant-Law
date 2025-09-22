@@ -26,8 +26,27 @@ interface PacksContextValue {
 
 const PacksContext = createContext<PacksContextValue | null>(null)
 
+const absoluteUrlPattern = /^[a-zA-Z][a-zA-Z\d+\-.]*:/
+
+const resolvePackUrl = (input: string): string => {
+  if (absoluteUrlPattern.test(input)) {
+    return input
+  }
+
+  const base = import.meta.env.BASE_URL ?? '/'
+  const normalizedBase = base.endsWith('/') ? base : `${base}/`
+  const normalizedPath = input.startsWith('./')
+    ? input.slice(2)
+    : input.startsWith('/')
+      ? input.slice(1)
+      : input
+
+  return `${normalizedBase}${normalizedPath}`
+}
+
 const fetchPack = async (url: string): Promise<ContentPack> => {
-  const response = await fetch(url, { cache: 'no-store' })
+  const resolvedUrl = resolvePackUrl(url)
+  const response = await fetch(resolvedUrl, { cache: 'no-store' })
 
   if (!response.ok) {
     throw new Error(`Failed to fetch pack: ${response.status} ${response.statusText}`)
@@ -66,7 +85,7 @@ export const PacksProvider = ({ children }: PropsWithChildren): JSX.Element => {
     setError(null)
 
     try {
-      const pack = await fetchPack('/packs/core.pack.json')
+      const pack = await fetchPack('packs/core.pack.json')
       commitPacks([pack])
       setActivePackId(pack.id)
       setStatus('ready')
