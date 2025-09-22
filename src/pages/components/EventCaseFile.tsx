@@ -1,6 +1,7 @@
 import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { DirectorEvent } from '../../core/director'
+import type { OutcomeDelta } from '../../core/scoring'
 import type { Question } from '../../data/packs/schema'
 import { formatDuration } from '../../utils/timers'
 
@@ -13,6 +14,9 @@ export interface CaseResolution {
   starsEarned: number
   actionIds: string[]
   revealedFactIds: string[]
+  hintUsed: boolean
+  meterImpact?: OutcomeDelta
+  rationale?: string
 }
 
 export interface SessionEventInput {
@@ -48,6 +52,7 @@ interface EventCaseFileProps {
   modifiers: readonly string[]
   outcomeSummary?: string
   modeLabel?: string
+  unlockedSkillIds: readonly string[]
 }
 
 const ACTION_LIBRARY: CaseActionConfig[] = [
@@ -157,15 +162,24 @@ const createFacts = (event: DirectorEvent, question?: Question): CaseFact[] => {
 const FALLBACK_CHOICES: Question['choices'] = [
   {
     id: 'fallback-resolve',
-    label: 'Document, remediate, and communicate plan',
+    label: 'Send notice to cease and outline remediation steps',
     correct: true,
   },
   {
+    id: 'fallback-consult',
+    label: 'Call PHA before escalating enforcement',
+    correct: false,
+  },
+  {
     id: 'fallback-delay',
-    label: 'Wait it out and react later',
+    label: 'Decline ES animal fee and wait for the court date',
     correct: false,
   },
 ]
+
+const HINT_TOKEN_BASE_COST = 2
+const TOOLTIP_SKILL_ID = 'policy-tracker'
+const RAPID_REPLY_SKILL_ID = 'rapid-reply'
 
 const resolveStars = (timeRemaining: number, baseTimeMs: number, wasLate: boolean): number => {
   if (wasLate) {
@@ -196,16 +210,46 @@ const EventCaseFile = ({
   modifiers,
   outcomeSummary,
   modeLabel,
+  unlockedSkillIds,
 }: EventCaseFileProps): JSX.Element => {
   const [coins, setCoins] = useState(coinsAvailable)
   const [timeRemaining, setTimeRemaining] = useState(baseTimeMs)
   const [actionsTaken, setActionsTaken] = useState<string[]>([])
   const [revealedFacts, setRevealedFacts] = useState<Set<string>>(new Set())
   const [isResolved, setIsResolved] = useState(false)
+  const [hintTokens, setHintTokens] = useState(0)
+  const [hintRevealed, setHintRevealed] = useState(false)
+  const [lastAnswer, setLastAnswer] = useState<{
+    choiceId: string
+    correct: boolean
+    meterImpact?: OutcomeDelta
+    rationale: string
+  } | null>(null)
   const startTimeRef = useRef<number>(Date.now())
   const timerRef = useRef<number | null>(null)
 
   const facts = useMemo(() => createFacts(event, relatedQuestion), [event, relatedQuestion])
+
+  const hintCost = useMemo(() => {
+    if (unlockedSkillIds.includes(RAPID_REPLY_SKILL_ID)) {
+      return Math.max(1, HINT_TOKEN_BASE_COST - 1)
+    }
+
+    return HINT_TOKEN_BASE_COST
+  }, [unlockedSkillIds])
+
+  const hintPreview = useMemo(() => {
+    if (!relatedQuestion?.explanation) {
+      return 'Check the case file for service proof and statutory timing.'
+    }
+
+    const sentences = relatedQuestion.explanation.split(/(?<=[.!?])\s+/)
+    return sentences[0] ?? relatedQuestion.explanation
+  }, [relatedQuestion])
+
+  const tooltipsEnabled = useMemo(() => {
+    return unlockedSkillIds.includes(TOOLTIP_SKILL_ID)
+  }, [unlockedSkillIds])
 
   useEffect(() => {
     setCoins(coinsAvailable)
@@ -213,6 +257,9 @@ const EventCaseFile = ({
     setActionsTaken([])
     setRevealedFacts(new Set())
     setIsResolved(false)
+    setHintTokens(0)
+    setHintRevealed(false)
+    setLastAnswer(null)
     startTimeRef.current = Date.now()
 
     if (timerRef.current) {
@@ -279,6 +326,56 @@ const EventCaseFile = ({
     return FALLBACK_CHOICES
   }, [relatedQuestion])
 
+  const handleBuyHint = () => {
+    if (isResolved) {
+      return
+    }
+
+    if (hintTokens > 0) {
+      return
+    }
+
+    if (coins < hintCost) {
+      return
+    }
+
+    const remaining = coins - hintCost
+    setCoins(remaining)
+    setHintTokens(1)
+
+    onSessionEvent({
+      kind: 'case_hint_purchase',
+      summary: `Bought hint for ${event.id}`,
+      data: {
+        eventId: event.id,
+        cost: hintCost,
+        coinsRemaining: remaining,
+      },
+    })
+  }
+
+  const handleRevealHint = () => {
+    if (isResolved) {
+      return
+    }
+
+    if (hintTokens <= 0 || hintRevealed) {
+      return
+    }
+
+    setHintTokens(0)
+    setHintRevealed(true)
+
+    onSessionEvent({
+      kind: 'case_hint_reveal',
+      summary: `Revealed hint for ${event.id}`,
+      data: {
+        eventId: event.id,
+        source: relatedQuestion?.id ?? null,
+      },
+    })
+  }
+
   const handleChoice = (choiceId: string) => {
     if (isResolved) {
       return
@@ -301,6 +398,19 @@ const EventCaseFile = ({
     const wasLate = elapsed > baseTimeMs
     const starsEarned = resolveStars(timeRemaining, baseTimeMs, wasLate)
     const revealedFactIds = Array.from(revealedFacts)
+    const meterImpact = choice.meterImpact ?? event.meterImpact
+    const rationale =
+      choice.meterImpact?.summary ??
+      relatedQuestion?.explanation ??
+      event.meterImpact?.summary ??
+      'Review statutory requirements to stay compliant.'
+
+    setLastAnswer({
+      choiceId,
+      correct: Boolean(choice.correct),
+      meterImpact: meterImpact ?? undefined,
+      rationale,
+    })
 
     onSessionEvent({
       kind: 'case_answer',
@@ -310,6 +420,8 @@ const EventCaseFile = ({
         wasLate,
         starsEarned,
         actionsTaken,
+        hintUsed: hintRevealed,
+        meterImpact,
       },
     })
 
@@ -322,8 +434,22 @@ const EventCaseFile = ({
       starsEarned,
       actionIds: actionsTaken,
       revealedFactIds,
+      hintUsed: hintRevealed,
+      meterImpact: meterImpact ?? undefined,
+      rationale,
     })
   }
+
+  const meterEntries = useMemo(() => {
+    if (!lastAnswer?.meterImpact) {
+      return []
+    }
+
+    return Object.entries(lastAnswer.meterImpact).filter((entry): entry is [string, number] => {
+      const [key, value] = entry
+      return key !== 'summary' && typeof value === 'number' && Number.isFinite(value)
+    })
+  }, [lastAnswer])
 
   return (
     <article className="card case-file">
@@ -339,6 +465,9 @@ const EventCaseFile = ({
           <span className="case-file__coins">🪙 {coins}</span>
           <span className="case-file__stars" aria-live="polite">
             ⭐ {resolveStars(timeRemaining, baseTimeMs, timeRemaining <= 0)}
+          </span>
+          <span className="case-file__tokens" aria-live="polite">
+            🎟 {hintTokens}
           </span>
         </div>
       </header>
@@ -402,6 +531,24 @@ const EventCaseFile = ({
 
       <section aria-label="Resolve case" className="case-file__response">
         <h4>{relatedQuestion ? 'How do you resolve it?' : 'Choose a response'}</h4>
+        <div className="hint-controls">
+          <button
+            type="button"
+            onClick={handleBuyHint}
+            disabled={isResolved || coins < hintCost || hintTokens > 0}
+          >
+            Buy hint (−{hintCost}🪙)
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={handleRevealHint}
+            disabled={isResolved || hintTokens <= 0 || hintRevealed}
+          >
+            Reveal hint token
+          </button>
+        </div>
+        {hintRevealed ? <p className="case-file__hint">Hint: {hintPreview}</p> : null}
         <ul>
           {choices.map((choice) => (
             <li key={choice.id}>
@@ -410,6 +557,11 @@ const EventCaseFile = ({
                 className="secondary"
                 onClick={() => handleChoice(choice.id)}
                 disabled={isResolved}
+                title={
+                  tooltipsEnabled && choice.meterImpact?.summary
+                    ? choice.meterImpact.summary
+                    : undefined
+                }
               >
                 {choice.label}
               </button>
@@ -417,6 +569,44 @@ const EventCaseFile = ({
           ))}
         </ul>
       </section>
+
+      {lastAnswer ? (
+        <section aria-label="Outcome" className="case-file__outcome">
+          <h4>Decision outcome</h4>
+          {meterEntries.length > 0 ? (
+            <ul className="case-file__meter-deltas">
+              {meterEntries.map(([meter, impact]) => {
+                const display = Math.round(impact * 2)
+                const sign = display >= 0 ? '+' : ''
+                return (
+                  <li key={meter}>
+                    <strong>
+                      {sign}
+                      {display}
+                    </strong>
+                    <span>{meter}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="small-print">No meter changes recorded for this option.</p>
+          )}
+          <p>{lastAnswer.rationale}</p>
+          <details>
+            <summary>Show me the law</summary>
+            {event.citation ? (
+              <p>
+                <a href={event.citation} target="_blank" rel="noreferrer">
+                  Open citation
+                </a>
+              </p>
+            ) : (
+              <p className="small-print">No citations provided for this scenario.</p>
+            )}
+          </details>
+        </section>
+      ) : null}
     </article>
   )
 }

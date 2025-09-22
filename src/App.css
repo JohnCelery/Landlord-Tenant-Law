@@ -591,7 +591,8 @@ button.secondary {
 
 .case-file__timer,
 .case-file__coins,
-.case-file__stars {
+.case-file__stars,
+.case-file__tokens {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -614,6 +615,24 @@ button.secondary {
   padding: 0;
   display: grid;
   gap: 0.75rem;
+}
+
+.hint-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.hint-controls button {
+  flex: 1 1 150px;
+}
+
+.case-file__hint {
+  margin: 0.25rem 0 0.6rem;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: var(--color-text-muted);
 }
 
 .case-file__actions li button,
@@ -648,6 +667,53 @@ button.secondary {
 
 .case-file__response li button.secondary {
   justify-content: center;
+}
+
+.case-file__outcome {
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.case-file__meter-deltas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.case-file__meter-deltas li {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  min-width: 80px;
+}
+
+.case-file__meter-deltas li strong {
+  font-size: 1rem;
+}
+
+.case-file__outcome details {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface-muted);
+}
+
+.case-file__outcome details[open] {
+  border-style: solid;
+}
+
+.case-file__outcome details summary {
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .session-log {
