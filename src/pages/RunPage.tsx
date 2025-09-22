@@ -1,4 +1,5 @@
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import DirectorDebugOverlay from '../components/DirectorDebugOverlay'
 import {
@@ -23,6 +24,7 @@ import EventCaseFile, {
   type SessionEventInput,
 } from './components/EventCaseFile'
 import type { SessionEvent } from '../data/packs/schema'
+import { type MasteryRecord, toGameMeters, useGameState } from '../core/gameState'
 
 const clamp = (value: number, min = 0, max = 1): number => {
   return Math.min(max, Math.max(min, value))
@@ -31,6 +33,33 @@ const clamp = (value: number, min = 0, max = 1): number => {
 const RunPage = (): JSX.Element => {
   const pack = useActivePack()
   const { selectedBuildingId, activeModifiers } = useCampaignState()
+  const navigate = useNavigate()
+  const seedInitializedRef = useRef(false)
+  const {
+    runId,
+    runSeed,
+    startRun,
+    setDayInStore,
+    setXpInStore,
+    setMetersInStore,
+    setMasteryInStore,
+    setStreakInStore,
+    setCoinsInStore,
+    adjustCoinsInStore,
+    incrementHintsUsedInStore,
+  } = useGameState((state) => ({
+    runId: state.runId,
+    runSeed: state.runSeed,
+    startRun: state.startRun,
+    setDayInStore: state.setDay,
+    setXpInStore: state.setXp,
+    setMetersInStore: state.setMeters,
+    setMasteryInStore: state.setMastery,
+    setStreakInStore: state.setStreakDays,
+    setCoinsInStore: state.setCoins,
+    adjustCoinsInStore: state.adjustCoins,
+    incrementHintsUsedInStore: state.incrementHintsUsed,
+  }))
 
   const selectedBuilding = useMemo(() => {
     return (
@@ -85,15 +114,108 @@ const RunPage = (): JSX.Element => {
   >([])
   const sessionCounterRef = useRef(0)
 
+  const convertRatiosToMastery = useCallback((ratios: Record<string, number>): MasteryRecord => {
+    return Object.entries(ratios).reduce<MasteryRecord>((acc, [topic, value]) => {
+      const normalized = clamp(value, 0, 1)
+      const right = Math.max(0, Math.round(normalized * 100))
+      const wrong = Math.max(0, 100 - right)
+      acc[topic] = { right, wrong }
+      return acc
+    }, {})
+  }, [])
+
+  const mapMetersForStore = useCallback((meters: Record<string, number>) => {
+    return toGameMeters({
+      compliance: meters.compliance ?? 0,
+      residentTrust: meters.residentTrust ?? meters.trust ?? 0,
+      ownerROI: meters.ownerROI ?? meters.roi ?? 0,
+      risk: meters.risk ?? 0,
+    })
+  }, [])
+
+  const ensureNumber = useCallback((value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number.parseFloat(value)
+
+      if (Number.isFinite(parsed)) {
+        return parsed
+      }
+    }
+
+    return null
+  }, [])
+
   useEffect(() => {
+    if (seedInitializedRef.current) {
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    seedInitializedRef.current = true
+    const params = new URLSearchParams(window.location.search)
+    const seedParam = params.get('seed')
+    const parsedSeed = seedParam ? Number.parseInt(seedParam, 10) : Number.NaN
+    const hasExistingRun = Boolean(runId)
+    let activeSeed = runSeed
+
+    if (Number.isFinite(parsedSeed) && parsedSeed > 0) {
+      if (!hasExistingRun || parsedSeed !== runSeed) {
+        activeSeed = startRun(parsedSeed)
+      } else {
+        activeSeed = parsedSeed
+      }
+    } else if (!hasExistingRun) {
+      activeSeed = startRun()
+    } else if (!runSeed) {
+      activeSeed = startRun()
+    }
+
+    if (!Number.isFinite(parsedSeed) || parsedSeed !== activeSeed) {
+      params.set('seed', String(activeSeed))
+      navigate({ pathname: window.location.pathname, search: params.toString() }, { replace: true })
+    }
+  }, [navigate, runId, runSeed, startRun])
+
+  useEffect(() => {
+    if (!seedInitializedRef.current) {
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (!runSeed) {
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const current = params.get('seed')
+
+    if (current === String(runSeed)) {
+      return
+    }
+
+    params.set('seed', String(runSeed))
+    navigate({ pathname: window.location.pathname, search: params.toString() }, { replace: true })
+  }, [navigate, runSeed])
+
+  useEffect(() => {
+    const baselineMastery = pack.topics.reduce<Record<string, number>>((acc, topic, index) => {
+      const baseline = clamp(0.8 - index * 0.1)
+      acc[topic] = Number(baseline.toFixed(2))
+      return acc
+    }, {})
+
     setDay(1)
-    setMasteryByTopic(() =>
-      pack.topics.reduce<Record<string, number>>((acc, topic, index) => {
-        const baseline = clamp(0.8 - index * 0.1)
-        acc[topic] = Number(baseline.toFixed(2))
-        return acc
-      }, {}),
-    )
+    setMasteryByTopic(baselineMastery)
     setMeterStates(() => ({ ...defaultMeters }))
     setRecentMistakes(() =>
       pack.topics.slice(0, 2).map((topic, index) => ({
@@ -112,7 +234,52 @@ const RunPage = (): JSX.Element => {
     const baselineSkills = pack.skills.length > 0 ? [pack.skills[0].id] : []
     setUnlockedSkillIds(baselineSkills)
     setPendingOutcome(null)
-  }, [pack, selectedBuilding.id])
+
+    setDayInStore(1)
+    setXpInStore(0)
+    setStreakInStore(0)
+    setCoinsInStore(5)
+    setMetersInStore(toGameMeters(defaultMeters))
+    setMasteryInStore(convertRatiosToMastery(baselineMastery))
+  }, [
+    pack,
+    selectedBuilding.id,
+    convertRatiosToMastery,
+    setCoinsInStore,
+    setDayInStore,
+    setMasteryInStore,
+    setMetersInStore,
+    setStreakInStore,
+    setXpInStore,
+  ])
+
+  useEffect(() => {
+    setDayInStore(day)
+  }, [day, setDayInStore])
+
+  useEffect(() => {
+    setXpInStore(xpTotal)
+  }, [setXpInStore, xpTotal])
+
+  useEffect(() => {
+    setStreakInStore(streak)
+  }, [setStreakInStore, streak])
+
+  useEffect(() => {
+    if (Object.keys(meterStates).length === 0) {
+      return
+    }
+
+    setMetersInStore(mapMetersForStore(meterStates))
+  }, [mapMetersForStore, meterStates, setMetersInStore])
+
+  useEffect(() => {
+    if (Object.keys(masteryByTopic).length === 0) {
+      return
+    }
+
+    setMasteryInStore(convertRatiosToMastery(masteryByTopic))
+  }, [convertRatiosToMastery, masteryByTopic, setMasteryInStore])
 
   useEffect(() => {
     const nextDecision = director.planNext({
@@ -133,6 +300,16 @@ const RunPage = (): JSX.Element => {
 
     return decision?.event ?? null
   }, [decision, pendingCleanupEvents])
+
+  const activeEventId = activeEvent?.id ?? null
+
+  useEffect(() => {
+    if (!activeEventId) {
+      return
+    }
+
+    setCoinsInStore(5)
+  }, [activeEventId, setCoinsInStore])
 
   const relatedQuestion = useMemo(() => {
     if (!activeEvent?.relatedQuestionId) {
@@ -206,18 +383,39 @@ const RunPage = (): JSX.Element => {
     setDebugSnapshot(snapshot.enabled ? snapshot : null)
   }, [director])
 
-  const emitSessionEvent = useCallback((input: SessionEventInput) => {
-    sessionCounterRef.current += 1
-    const entry: SessionEvent = {
-      id: `${input.kind}-${Date.now()}-${sessionCounterRef.current}`,
-      kind: input.kind,
-      timestamp: new Date().toISOString(),
-      summary: input.summary,
-      data: input.data,
-    }
+  const emitSessionEvent = useCallback(
+    (input: SessionEventInput) => {
+      const data = input.data as Record<string, unknown> | undefined
 
-    setSessionLog((current) => [...current.slice(-49), entry])
-  }, [])
+      if (input.kind === 'case_hint_purchase') {
+        const coinsRemaining = ensureNumber(data?.['coinsRemaining'])
+
+        if (coinsRemaining !== null) {
+          setCoinsInStore(coinsRemaining)
+        }
+      } else if (input.kind === 'case_action') {
+        const cost = ensureNumber(data?.['coinCost'])
+
+        if (cost !== null) {
+          adjustCoinsInStore(-cost)
+        }
+      } else if (input.kind === 'case_hint_reveal') {
+        incrementHintsUsedInStore()
+      }
+
+      sessionCounterRef.current += 1
+      const entry: SessionEvent = {
+        id: `${input.kind}-${Date.now()}-${sessionCounterRef.current}`,
+        kind: input.kind,
+        timestamp: new Date().toISOString(),
+        summary: input.summary,
+        data: input.data,
+      }
+
+      setSessionLog((current) => [...current.slice(-49), entry])
+    },
+    [adjustCoinsInStore, ensureNumber, incrementHintsUsedInStore, setCoinsInStore],
+  )
 
   useEffect(() => {
     if (pack.skills.length === 0) {
